@@ -12,6 +12,7 @@ const Chatbot = () => {
     setMessages([
       {
         id: 1,
+
         text: "Hello! How can I help you today??",
         sender: 'bot',
         options: [

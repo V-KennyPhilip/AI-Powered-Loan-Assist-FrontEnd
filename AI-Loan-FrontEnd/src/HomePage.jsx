@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import l24logo from './assets/Loans24Logo.png';
 import Chatbot from './ChatBot';
@@ -15,6 +15,7 @@ const FinancialDashboard = () => {
   
   // Create a ref for the dropdown container
   const dropdownRef = useRef(null);
+  const navigate = useNavigate();
 
   // Fetch data from APIs
   useEffect(() => {
@@ -53,6 +54,7 @@ const FinancialDashboard = () => {
   // Logout handler
   const handleLogout = () => {
     console.log('Logging out');
+    navigate('/auth', { state: { message: "Successfully logged out!", type: "success" } });
   };
 
   const location = useLocation();

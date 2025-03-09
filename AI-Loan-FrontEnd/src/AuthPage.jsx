@@ -35,6 +35,8 @@ const AuthPage = () => {
     phone: ''
   });
 
+  const [isLoading, setIsLoading] = useState(false);
+
   // Auto-cycle through features every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
@@ -52,11 +54,11 @@ const AuthPage = () => {
   };
 
   const [message, setMessage] = useState(null);
-
-
   const navigate = useNavigate();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsLoading(true); // Start buffer animation
     const endpoint = isLogin 
       ? 'http://localhost:8080/api/login'
       : 'http://localhost:8080/api/signup';
@@ -65,6 +67,7 @@ const AuthPage = () => {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
         body: JSON.stringify(formData)
       });
   
@@ -74,22 +77,37 @@ const AuthPage = () => {
       if (!response.ok) {
         // If error, show the error message from the backend
         setMessage({ type: 'error', text: data.message || 'Authentication failed.' });
+        setIsLoading(false);
+        setTimeout(() => setMessage(null), 3000);
         return;
       }
 
-      localStorage.setItem('token', data.token);
+      // localStorage.setItem('token', data.token);
   
       // On success, show a success message from the backend
-      setMessage({ type: 'success', text: data.message || (isLogin ? 'Login successful!' : 'Signup successful!') });
+      // setMessage({ type: 'success', text: data.message || (isLogin ? 'Login successful!' : 'Signup successful!') });
       
-      // Optionally clear the message after a delay and navigate to HomePage
-      setTimeout(() => {
-        navigate('/home');
-      }, 1000); // Adjust the delay as needed
-  
-    } catch (error) {
+      if (isLogin) {
+        setMessage({ type: 'success', text: data.message || 'Login successful!' });
+        setIsLoading(false);
+        setTimeout(() => {
+          navigate('/home');
+        }, 1000);
+      } else {
+      // Signup branch: show message and switch to login view
+        setMessage({ type: 'success', text: data.message || 'Signup successful! Please log in.' });
+        setFormData({ email: '', password: '', name: '', phone: '' });
+        setIsLoading(false);
+        setTimeout(() => setMessage(null), 3000);
+        // Switch to login layout
+        setIsLogin(true);
+    }
+
+  } catch (error) {
       console.error('Error sending request:', error);
       setMessage({ type: 'error', text: 'An unexpected error occurred.' });
+      setIsLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
   
@@ -99,7 +117,16 @@ const AuthPage = () => {
       {/* Message Box: appears when a message is set */}
         {message && (
           <div className={`message-box ${message.type}`}>
-            {message.text}
+            <span>{message.text}</span>
+            <button onClick={() => setMessage(null)} className="dismiss-button">
+                Dismiss
+            </button>
+          </div>
+        )}
+        {/* Loading Spinner */}
+        {isLoading && (
+          <div className="spinner-container">
+            <div className="spinner"></div>
           </div>
         )}
       {/* LEFT CONTENT */}
@@ -249,39 +276,81 @@ const AuthPage = () => {
           }
         }
           .message-box {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 1rem 2rem;
-  border-radius: 8px;
-  z-index: 1100;
-  animation: slideDown 0.5s ease-out;
-  font-size: 1rem;
-}
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            z-index: 1100;
+            animation: slideDown 0.5s ease-out;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+          }
 
-/* Success style */
-.message-box.success {
-  background-color: #d1fae5;
-  color: #065f46;
-}
+          /* Success style */
+          .message-box.success {
+            background-color: #d1fae5;
+            color: #065f46;
+          }
 
-/* Error style */
-.message-box.error {
-  background-color: #fee2e2;
-  color: #991b1b;
-}
+          /* Error style */
+          .message-box.error {
+            background-color: #fee2e2;
+            color: #991b1b;
+          }
+            .dismiss-button {
+          background: transparent;
+          border: none;
+          color: inherit;
+          font-size: 0.9rem;
+          cursor: pointer;
+          padding: 0.2rem 0.5rem;
+        }
 
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -20px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-}
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translate(-50%, -20px);
+          }
+          to {
+            opacity: 1;
+            transform: translate(-50%, 0);
+          }
+        }
+        /* Spinner CSS for buffer animation */
+        .spinner-container {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 1200;
+        }
+        .spinner {
+          border: 4px solid rgba(255, 255, 255, 0.3);
+          border-top: 4px solid #ffffff;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+          @keyframes slideDown {
+            from {
+              opacity: 0;
+              transform: translate(-50%, -20px);
+            }
+            to {
+              opacity: 1;
+              transform: translate(-50%, 0);
+            }
+          }
 
 
         /* LEFT CONTENT */

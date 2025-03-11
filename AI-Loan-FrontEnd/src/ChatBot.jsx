@@ -7,99 +7,100 @@ const Chatbot = () => {
   const [inputMessage, setInputMessage] = useState('');
   const [currentFlow, setCurrentFlow] = useState('initial');
 
-  // Initial welcome message
-  useEffect(() => {
-    setMessages([
-      {
-        id: 1,
-        text: "Hello! How can I help you today??",
-        sender: 'bot',
-        options: [
-          { id: 'products', text: 'Learn about Products' },
-          { id: 'support', text: 'Customer Support' },
-          { id: 'services', text: 'Our Services' }
-        ]
-      }
-    ]);
-  }, []);
+  // const userEmail = 'john@example.com';
+  const userId = 4;
 
-  const toggleChat = () => {
-    setIsChatOpen(!isChatOpen);
+  // Static welcome message to display immediately when the chat opens.
+  const staticMessage = {
+    id: 1,
+    text: "Welcome to our Chatbot! How can we help you today?",
+    sender: 'bot'
   };
 
+  // When the chat opens, fetch the initial prompt (prompt id 0) if there are no messages
+  useEffect(() => {
+    if (isChatOpen && messages.length === 0) {
+      setMessages([staticMessage]);
+      fetchPrompt(0);
+    }
+  }, [isChatOpen]);
+
+  // Toggle the chat window.
+  const toggleChat = () => {
+    setIsChatOpen((prev) => !prev);
+  };
+
+  // Fetch prompt data from the backend using the provided API structure.
+  const fetchPrompt = async (promptId, additional = 0) => {
+    console.log('Fetching prompt with id:', promptId);
+    try {
+      const response = await fetch(
+        `http://localhost:8080/api/userbot/query?prompt_id=${promptId}&userId=${userId}&additional=${additional}`,
+        {
+          headers: {  
+            Accept: 'application/json'
+          },
+          credentials: 'include'
+        }
+      );
+      const data = await response.json();
+      if (data && data.success) {
+        const { mainPromptText, responseText, followups, extraAction } = data.data;
+        const newMessage = {
+          id: messages.length + 1,
+          text: mainPromptText,
+          response: responseText, // optional extra response text
+          sender: 'bot',
+          options: followups.map((followup) => ({
+            id: followup.promptId,
+            text: followup.text,
+          })),
+          extraAction,
+        };
+        setMessages((prevMessages) => [...prevMessages, newMessage]);
+      } else {
+        console.error('Failed to retrieve prompt data.');
+      }
+    } catch (error) {
+      console.error('Error fetching prompt:', error);
+    }
+  };
+  
+
+  // Handle sending a free text message.
   const handleSendMessage = () => {
     if (inputMessage.trim() === '') return;
-
-    // Add user message
-    setMessages(prevMessages => [
-      ...prevMessages, 
-      { 
-        id: prevMessages.length + 1, 
-        text: inputMessage, 
-        sender: 'user' 
-      }
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      {
+        id: prevMessages.length + 1,
+        text: inputMessage,
+        sender: 'user',
+      },
     ]);
-
-    // Clear input
+    // (Optional: You might process free text input differently or send it to your backend.)
     setInputMessage('');
   };
 
-  const handleOptionClick = (option) => {
-    switch(option) {
-      case 'products':
-        setMessages(prevMessages => [
-          ...prevMessages,
-          {
-            id: prevMessages.length + 1,
-            text: "Here are our product categories:",
-            sender: 'bot',
-            options: [
-              { id: 'tech', text: 'Technology Products' },
-              { id: 'home', text: 'Home Solutions' },
-              { id: 'back', text: '← Back to Main Menu' }
-            ]
-          }
-        ]);
-        break;
-      case 'support':
-        setMessages(prevMessages => [
-          ...prevMessages,
-          {
-            id: prevMessages.length + 1,
-            text: "How can we assist you today?",
-            sender: 'bot',
-            options: [
-              { id: 'technical', text: 'Technical Support' },
-              { id: 'billing', text: 'Billing Inquiries' },
-              { id: 'back', text: '← Back to Main Menu' }
-            ]
-          }
-        ]);
-        break;
-      case 'back':
-        // Reset to initial flow
-        setMessages([
-          {
-            id: 1,
-            text: "Hello! How can I help you today?",
-            sender: 'bot',
-            options: [
-              { id: 'products', text: 'Learn about Products' },
-              { id: 'support', text: 'Customer Support' },
-              { id: 'services', text: 'Our Services' }
-            ]
-          }
-        ]);
-        break;
-      default:
-        setMessages(prevMessages => [
-          ...prevMessages,
-          {
-            id: prevMessages.length + 1,
-            text: `You selected: ${option}. How can I help further?`,
-            sender: 'bot'
-          }
-        ]);
+  // Handle a user clicking one of the follow-up option buttons.
+  const handleOptionClick = (optionId, optionText) => {
+    // Log the user's option selection.
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      {
+        id: prevMessages.length + 1,
+        text: `${optionText}`,
+        sender: 'user',
+      },
+    ]);
+
+    // If the option is to go back to the main menu, reset the chat.
+    if (optionId === 'back') {
+      setMessages([]);
+      fetchPrompt(0);
+    } else {
+      // Otherwise, fetch the next prompt using the clicked prompt id.
+      fetchPrompt(optionId);
     }
   };
 
@@ -129,18 +130,32 @@ const Chatbot = () => {
         <div key={message.id} className={`message ${message.sender}`}>
           <div className="message-content">
             {message.text}
-            {message.options && (
+            {message.response && (
+              <div className="message-response">{message.response}</div>
+            )}
+            {message.options && message.options.length > 0 ? (
               <div className="message-options">
-                {message.options.map((option) => (
+                {message.options.map((option, idx) => (
                   <button
-                    key={option.id}
-                    onClick={() => handleOptionClick(option.id)}
+                    key={`${message.id}-${option.id}-${idx}`}
+                    onClick={() => handleOptionClick(option.id, option.text)}
                     className="option-btn"
                   >
                     {option.text}
                   </button>
                 ))}
               </div>
+            ) : (
+              // When there are no followups, display extraAction if it exists.
+              message.extraAction && (
+                <div className="extra-action">
+                  {Object.entries(message.extraAction).map(([key, value]) => (
+                    <div key={key}>
+                      <strong>{key}:</strong> {value}
+                    </div>
+                  ))}
+                </div>
+              )
             )}
           </div>
         </div>
@@ -159,60 +174,6 @@ const Chatbot = () => {
       </button>
     </div>
   </div>
-
-      {/* Floating Chatbot Button
-      <div className="chatbot-float-btn" onClick={toggleChat}>
-        <MessageCircle size={24} />
-      </div> */}
-
-      {/* Chatbot Interface */}
-      {/* <div className={`chatbot-container ${isChatOpen ? 'open' : ''}`}>
-        <div className="chatbot-header">
-          <div className="chatbot-title">
-            <Bot size={20} />
-            <span>Support Assistant</span>
-          </div>
-          <button className="chatbot-close" onClick={toggleChat}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="chatbot-messages">
-          {messages.map((message) => (
-            <div key={message.id} className={`message ${message.sender}`}>
-              <div className="message-content">
-                {message.text}
-                {message.options && (
-                  <div className="message-options">
-                    {message.options.map((option) => (
-                      <button 
-                        key={option.id} 
-                        onClick={() => handleOptionClick(option.id)}
-                        className="option-btn"
-                      >
-                        {option.text}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="chatbot-input-area">
-          <input 
-            type="text" 
-            placeholder="Type your message..."
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-          />
-          <button onClick={handleSendMessage}>
-            <Send size={20} />
-          </button>
-        </div> 
-      </div> */}
       <style> {`
         /* Floating Button Styles */
         .chatbot-float-btn {
@@ -317,12 +278,13 @@ const Chatbot = () => {
           }
           
           .message.bot {
-            background-color: #e6f2ff;
+            background-color:rgb(62, 134, 227);
             align-self: flex-start;
           }
           
           .message.user {
-            background-color: #3b82f6;
+            // background-color: #3b82f6;
+            background-color:rgb(56, 71, 233);
             color: white;
             align-self: flex-end;
           }

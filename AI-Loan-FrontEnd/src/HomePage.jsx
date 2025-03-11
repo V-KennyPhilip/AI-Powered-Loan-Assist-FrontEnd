@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
+import { UserContext } from './context/UserContext';
 import l24logo from './assets/Loans24Logo.png';
 import Chatbot from './ChatBot';
+import AdminChatbot from './AdminChatbot';
+import UserChatbot from './ChatBot';
 
 const FinancialDashboard = () => {
+
+  const { user } = useContext(UserContext);
+
   // State for user and financial data
   const [userName, setUserName] = useState('V Kenny Philip');
   const [loans, setLoans] = useState([]);
@@ -269,7 +275,13 @@ const FinancialDashboard = () => {
           </div>
         </div>
       </footer>
-      <Chatbot />
+      {/* <Chatbot /> */}
+      {/* Chatbot - Conditionally render based on user role */}
+      {user ? (
+        user.role === 'ADMIN' ? <AdminChatbot /> : <UserChatbot />
+      ) : (
+        <div>Loading chatbot...</div>
+      )}
       
       <style jsx>{`
         :root {

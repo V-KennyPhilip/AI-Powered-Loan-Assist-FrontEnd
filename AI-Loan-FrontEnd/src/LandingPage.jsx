@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import l24logo from './assets/Loans24Logo.png';
 import { Link } from 'react-router-dom';
-import Chatbot from './ChatBot';
+import ChatbotButton from './components/ChatbotButton';
+
 
 
 const LandingPage = () => {
@@ -715,7 +716,7 @@ const LandingPage = () => {
           }
         }
       `}</style>
-      <Chatbot/>
+      <ChatbotButton />
     </>
   );
 };

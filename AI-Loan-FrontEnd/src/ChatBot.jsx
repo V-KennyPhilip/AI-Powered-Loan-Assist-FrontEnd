@@ -1,345 +1,325 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { MessageCircle, Send, X, Bot } from 'lucide-react';
+import { UserContext } from './context/UserContext';
+import { v4 as uuidv4 } from 'uuid';
+import DynamicForm from './DynamicForm';
+import './ChatBot.css'
 
 const Chatbot = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [conversationId, setConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [currentFlow, setCurrentFlow] = useState('initial');
+  const [updateConfig, setUpdateConfig] = useState(null);
+  // New state to hold the selected loan id
+  const [selectedLoanId, setSelectedLoanId] = useState(null);
 
-  // const userEmail = 'john@example.com';
-  const userId = 4;
+  const { userDetails } = useContext(UserContext);
+  const userId = userDetails?.id;
 
-  // Static welcome message to display immediately when the chat opens.
-  const staticMessage = {
-    id: 1,
-    text: "Welcome to our Chatbot! How can we help you today?",
-    sender: 'bot'
+  // Helper to safely render values that might be objects.
+  const renderSafe = (value) => {
+    if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+    return value;
   };
 
-  // When the chat opens, fetch the initial prompt (prompt id 0) if there are no messages
+  // When the chat opens, generate a conversation and fetch the initial prompt.
   useEffect(() => {
-    if (isChatOpen && messages.length === 0) {
-      setMessages([staticMessage]);
-      fetchPrompt(0);
+    if (isChatOpen && messages.length === 0 && userId) {
+      const newConversationId = uuidv4();
+      setConversationId(newConversationId);
+      setMessages([
+        {
+          id: uuidv4(),
+          conversationId: newConversationId,
+          text: "Welcome to our Chatbot! How can we help you today?",
+          sender: 'bot'
+        }
+      ]);
+      fetchPrompt(0, userId, newConversationId);
     }
-  }, [isChatOpen]);
+  }, [isChatOpen, userId]);
 
   // Toggle the chat window.
   const toggleChat = () => {
     setIsChatOpen((prev) => !prev);
   };
 
-  // Fetch prompt data from the backend using the provided API structure.
-  const fetchPrompt = async (promptId, additional = 0) => {
-    console.log('Fetching prompt with id:', promptId);
+  /**
+   * Modified fetchPrompt that accepts:
+   * - promptId, userId, conversationId, optional additional parameter,
+   * - httpMethod (default 'GET'), and optional bodyData.
+   * 
+   * IMPORTANT: If no additional parameter is provided and selectedLoanId exists,
+   * we automatically append it.
+   */
+  const fetchPrompt = async (
+    promptId,
+    userId,
+    convId = conversationId,
+    additional = null,
+    httpMethod = 'GET',
+    bodyData = null
+  ) => {
+    if (!userId) {
+      console.error("User ID is missing!");
+      return;
+    }
+    
+    // Use selectedLoanId if available and additional is null
+    if (additional === null && selectedLoanId !== null) {
+      additional = selectedLoanId;
+    }
+
+    let url = `http://localhost:8080/api/userbot/query`;
+    const params = new URLSearchParams({
+      prompt_id: promptId,
+      userId: userId,
+    });
+    if (additional !== null && typeof additional === 'number') {
+      params.append('additional', additional);
+    }
+    url += `?${params.toString()}`;
+
+    const options = {
+      method: httpMethod,
+      headers: {
+        Accept: 'application/json'
+      },
+      credentials: 'include'
+    };
+
+    if (httpMethod === 'PUT' || httpMethod === 'POST') {
+      options.headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(bodyData || {});
+    }
+
+    console.log(
+      'Fetching prompt with id:',
+      promptId,
+      'and userId:',
+      userId,
+      `using ${httpMethod} method`,
+      additional !== null ? `, additional: ${additional}` : ''
+    );
+
     try {
-      const response = await fetch(
-        `http://localhost:8080/api/userbot/query?prompt_id=${promptId}&userId=${userId}&additional=${additional}`,
-        {
-          headers: {  
-            Accept: 'application/json'
-          },
-          credentials: 'include'
-        }
-      );
+      const response = await fetch(url, options);
       const data = await response.json();
       if (data && data.success) {
-        const { mainPromptText, responseText, followups, extraAction } = data.data;
+        const { responseText, followups, extraAction, intent } = data.data;
+        const botReply = responseText;
         const newMessage = {
-          id: messages.length + 1,
-          text: mainPromptText,
-          response: responseText, // optional extra response text
+          id: uuidv4(),
+          conversationId: convId,
+          text: renderSafe(botReply),
+          // response: renderSafe(responseText),
           sender: 'bot',
-          options: followups.map((followup) => ({
+          options: followups.map(followup => ({
             id: followup.promptId,
-            text: followup.text,
+            text: renderSafe(followup.text),
+            method: followup.httpRequestType,
+            fieldsToAdd: followup.fieldsToAdd
           })),
+          intent,
           extraAction,
         };
-        setMessages((prevMessages) => [...prevMessages, newMessage]);
+        setMessages(prevMessages => [...prevMessages, newMessage]);
       } else {
-        console.error('Failed to retrieve prompt data.');
+        let errorText = "";
+          if (data && data.data) {
+            errorText = Object.entries(data.data)
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(" | ");
+          } else {
+            errorText = data && data.message ? data.message : "Failed to retrieve prompt data.";
+          }
+        const errorMessageBot = {
+          id: uuidv4(),
+          conversationId: convId,
+          text: errorText,
+          sender: 'bot'
+        };
+        setMessages(prev => [...prev, errorMessageBot]);
       }
+      return response;
     } catch (error) {
       console.error('Error fetching prompt:', error);
+      const errorMessageBot = {
+        id: uuidv4(),
+        conversationId: convId,
+        text: "Failed to retrieve prompt data: " + error.message,
+        sender: 'bot'
+      };
+      setMessages(prev => [...prev, errorMessageBot]);
+      throw error;
     }
   };
-  
 
-  // Handle sending a free text message.
-  const handleSendMessage = () => {
-    if (inputMessage.trim() === '') return;
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      {
-        id: prevMessages.length + 1,
-        text: inputMessage,
-        sender: 'user',
-      },
-    ]);
-    // (Optional: You might process free text input differently or send it to your backend.)
-    setInputMessage('');
+  // Handle click on a followup option.
+  const handleOptionClick = (option) => {
+    const { id, text, method, fieldsToAdd } = option;
+    const newUserMessage = {
+      id: uuidv4(),
+      conversationId: conversationId,
+      text: text,
+      sender: 'user'
+    };
+    setMessages(prevMessages => [...prevMessages, newUserMessage]);
+
+    if ((method === 'PUT') || (method === 'POST' && fieldsToAdd)) {
+      let fields = [];
+      if (method === 'PUT') {
+        const match = text.match(/\[(.*?)\]/);
+        if (match) {
+          fields = match[1].split('/').map(field => field.trim());
+        }
+      } else if (method === 'POST' && fieldsToAdd) {
+        fields = fieldsToAdd;
+      }
+      setUpdateConfig({
+        method,
+        promptId: id,
+        fields,
+        promptText: text
+      });
+    } else if (id === 'back') {
+      setMessages([]);
+      fetchPrompt(0, userId, conversationId);
+    } else {
+      // This call will include the additional parameter if a loan is selected.
+      fetchPrompt(id, userId, conversationId, null, method)
+        .catch(error => {
+          console.error("Error fetching prompt:", error);
+          const errorMessageBot = {
+            id: uuidv4(),
+            conversationId: conversationId,
+            text: "Failed to retrieve prompt data: " + error.message,
+            sender: 'bot'
+          };
+          setMessages(prev => [...prev, errorMessageBot]);
+        });
+    }
   };
 
-  // Handle a user clicking one of the follow-up option buttons.
-  const handleOptionClick = (optionId, optionText) => {
-    // Log the user's option selection.
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      {
-        id: prevMessages.length + 1,
-        text: `${optionText}`,
-        sender: 'user',
-      },
-    ]);
-
-    // If the option is to go back to the main menu, reset the chat.
-    if (optionId === 'back') {
-      setMessages([]);
-      fetchPrompt(0);
-    } else {
-      // Otherwise, fetch the next prompt using the clicked prompt id.
-      fetchPrompt(optionId);
+  // Handle dynamic form submissions.
+  const handleFormSubmit = async (formData) => {
+    if (updateConfig) {
+      try {
+        const response = await fetchPrompt(
+          updateConfig.promptId,
+          userId,
+          conversationId,
+          null,
+          updateConfig.method,
+          formData
+        );
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+      } catch (error) {
+        console.error("Error while processing request:", error);
+        const errorMessageBot = {
+          id: uuidv4(),
+          conversationId: conversationId,
+          text: "Failed to process request: " + error.message,
+          sender: 'bot'
+        };
+        setMessages(prev => [...prev, errorMessageBot]); 
+      } finally {
+        setUpdateConfig(null);
+      }
     }
   };
 
   return (
     <>
-  {isChatOpen && <div className="chatbot-overlay" onClick={toggleChat}></div>}
-
-  <div
-    className={`chatbot-float-btn ${isChatOpen ? 'slide-out' : ''}`}
-    onClick={toggleChat}
-  >
-    <MessageCircle size={24} />
-  </div>
-
-  <div className={`chatbot-container ${isChatOpen ? 'open' : ''}`}>
-    <div className="chatbot-header">
-      <div className="chatbot-title">
-        <Bot size={20} />
-        <span>Support Assistant</span>
-      </div>
-      <button className="chatbot-close" onClick={toggleChat}>
-        <X size={20} />
-      </button>
-    </div>
-    <div className="chatbot-messages">
-      {messages.map((message) => (
-        <div key={message.id} className={`message ${message.sender}`}>
-          <div className="message-content">
-            {message.text}
-            {message.response && (
-              <div className="message-response">{message.response}</div>
-            )}
-            {message.options && message.options.length > 0 ? (
-              <div className="message-options">
-                {message.options.map((option, idx) => (
-                  <button
-                    key={`${message.id}-${option.id}-${idx}`}
-                    onClick={() => handleOptionClick(option.id, option.text)}
-                    className="option-btn"
-                  >
-                    {option.text}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              // When there are no followups, display extraAction if it exists.
-              message.extraAction && (
-                <div className="extra-action">
-                  {Object.entries(message.extraAction).map(([key, value]) => (
-                    <div key={key}>
-                      <strong>{key}:</strong> {value}
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
+      {isChatOpen && <div className="chatbot-overlay" onClick={toggleChat}></div>}
+      
+      <div className={`chatbot-container ${isChatOpen ? 'open' : ''}`}>
+        <div className="chatbot-header">
+          <div className="chatbot-title">
+            <Bot size={20} />
+            <span>Support Assistant</span>
           </div>
+          <button className="chatbot-close" onClick={toggleChat}>
+            <X size={20} />
+          </button>
         </div>
-      ))}
-    </div>
-    <div className="chatbot-input-area">
-      <input
-        type="text"
-        placeholder="Type your message..."
-        value={inputMessage}
-        onChange={(e) => setInputMessage(e.target.value)}
-        onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-      />
-      <button onClick={handleSendMessage}>
-        <Send size={20} />
-      </button>
-    </div>
-  </div>
-      <style> {`
-        /* Floating Button Styles */
-        .chatbot-float-btn {
-            position: fixed;
-            bottom: 20px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            background-color: #3b82f6;
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            cursor: pointer;
-            z-index: 1000;
-            transition: all 0.3s ease;
-          }
 
-          .chatbot-float-btn.slide-out {
-            transform: translateX(-460px); /* slides left */
-            opacity: 100;
-          }
+        <div className="chatbot-messages">
+          {messages.map((message) => (
+            <div key={message.id} className={`message ${message.sender}`}>
+              <div className="message-content">
+                {/* Display bot reply from responseText */}
+                <div>{renderSafe(message.text)}</div>
+                
+                {/* Render followup options if available */}
+                {message.options && message.options.length > 0 && (
+                  <div className="message-options">
+                    {message.options.map((option, idx) => (
+                      <button
+                        key={`${message.id}-${option.id}-${idx}`}
+                        onClick={() => handleOptionClick(option)}
+                        className="option-btn"
+                      >
+                        {renderSafe(option.text)}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-          .chatbot-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-            transition: opacity 0.3s ease;
-          }
-          
-          .chatbot-float-btn:hover {
-            background-color: #2563eb;
-            /* transform: scale(1.1); */
-          }
-          
-          /* Chatbot Container Styles */
-          .chatbot-container {
-            position: fixed;
-            bottom: 20px;
-            right: -500px;
-            width: 450px;
-            height: 520px;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-            display: flex;
-            flex-direction: column;
-            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-            z-index: 1000;
-          }
-          
-          .chatbot-container.open {
-            right: 30px;
-          }
-          
-          /* Chatbot Header */
-          .chatbot-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px;
-            background-color: #3b82f6;
-            color: white;
-            border-top-left-radius: 10px;
-            border-top-right-radius: 10px;
-          }
-          
-          .chatbot-title {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-          }
-          
-          .chatbot-close {
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-          }
-          
-          /* Messages Area */
-          .chatbot-messages {
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-          }
-          
-          .message {
-            max-width: 80%;
-            padding: 10px;
-            border-radius: 10px;
-            margin-bottom: 10px;
-          }
-          
-          .message.bot {
-            background-color:rgb(62, 134, 227);
-            align-self: flex-start;
-          }
-          
-          .message.user {
-            // background-color: #3b82f6;
-            background-color:rgb(56, 71, 233);
-            color: white;
-            align-self: flex-end;
-          }
-          
-          .message-options {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 10px;
-          }
-          
-          .option-btn {
-            background-color: #60a5fa;
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 20px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-          }
-          
-          .option-btn:hover {
-            background-color: #2563eb;
-          }
-          
-          /* Input Area */
-          .chatbot-input-area {
-            display: flex;
-            padding: 15px;
-            background-color: #f3f4f6;
-            border-bottom-left-radius: 10px;
-            border-bottom-right-radius: 10px;
-          }
-          
-          .chatbot-input-area input {
-            flex-grow: 1;
-            padding: 10px;
-            border: 1px solid #e5e7eb;
-            border-radius: 20px;
-            margin-right: 10px;
-          }
-          
-          .chatbot-input-area button {
-            background-color: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-          } 
-      `} </style>
+                {/* If extraAction contains loans, render loan buttons */}
+                {message.extraAction && message.extraAction.loans && (
+                  <div className="loan-buttons">
+                    {message.extraAction.loans.map((loan) => (
+                      <button
+                        key={loan.loan_id}
+                        onClick={() => setSelectedLoanId(loan.loan_id)}
+                        className={`loan-btn ${selectedLoanId === loan.loan_id ? 'selected' : ''}`}
+                      >
+                        {loan.type}
+                        {selectedLoanId === loan.loan_id && (
+                          <span className="tick-mark">✔</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* If extraAction exists and it's not a loans object, display its fields */}
+                {message.extraAction && !message.extraAction.loans && (
+                  <div className="extra-action">
+                    {typeof message.extraAction === 'object'
+                      ? Object.entries(message.extraAction).map(([key, value]) => (
+                          <div key={key}>
+                            <strong>{key}:</strong> {renderSafe(value)}
+                          </div>
+                        ))
+                      : <div>{renderSafe(message.extraAction)}</div>
+                    }
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Render DynamicForm if updateConfig is set */}
+      {updateConfig && (
+        <DynamicForm
+          config={updateConfig}
+          onSubmit={handleFormSubmit}
+          onCancel={() => setUpdateConfig(null)}
+        />
+      )}
+      <div
+        className={`chatbot-float-btn ${isChatOpen ? 'slide-out' : ''}`}
+        onClick={toggleChat}
+        >
+        <MessageCircle size={24} />
+      </div>
     </>
   );
 };

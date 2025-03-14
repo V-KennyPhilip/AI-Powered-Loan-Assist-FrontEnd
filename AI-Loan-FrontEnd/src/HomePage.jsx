@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { UserContext } from './context/UserContext';
 import l24logo from './assets/Loans24Logo.png';
-import Chatbot from './ChatBot';
 import AdminChatbot from './AdminChatbot';
 import UserChatbot from './ChatBot';
 
@@ -275,14 +274,19 @@ const FinancialDashboard = () => {
           </div>
         </div>
       </footer>
-      {/* <Chatbot /> */}
-      {/* Chatbot - Conditionally render based on user role */}
-      {user ? (
-        user.role === 'ADMIN' ? <AdminChatbot /> : <UserChatbot />
+      {/* Chatbot conditional rendering */}
+      {/* {user ? (
+        // Convert the role to uppercase to ensure consistency
+        user.role && user.role.toUpperCase() === 'ADMIN' ? (
+          <AdminChatbot />
+        ) : (
+          <UserChatbot />
+        )
       ) : (
         <div>Loading chatbot...</div>
-      )}
+      )} */}
       
+      <UserChatbot />
       <style jsx>{`
         :root {
           /* Adjusted space background with a slightly lighter blue gradient */

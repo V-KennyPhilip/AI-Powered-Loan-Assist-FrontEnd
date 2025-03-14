@@ -244,4 +244,4 @@ const LoanieApp = () => {
   );
 };
 
-export default LoanieApp;
+export default AdminChatbot;

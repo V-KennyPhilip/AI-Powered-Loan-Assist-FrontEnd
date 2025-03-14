@@ -274,7 +274,6 @@ const FinancialDashboard = () => {
           </div>
         </div>
       </footer>
-
       {/* Chatbot conditional rendering */}
       {/* {user ? (
         // Convert the role to uppercase to ensure consistency
